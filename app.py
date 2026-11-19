@@ -1063,39 +1063,66 @@ with st.expander("🚗 Chi dovrebbe prendere la macchina?", expanded=False):
         "tra le singole coppie."
     )
 
-    if net_balances:
-        sorted_balances = sorted(
-            net_balances,
-            key=lambda row: float(row["Km da ricambiare"]),
+    # Raggruppa i debiti per persona: una riga per ciascun membro del gruppo.
+    # Il totale è la somma dei chilometri che quella persona deve restituire
+    # a tutti gli altri, dopo aver già compensato i viaggi in direzione opposta.
+    totals_to_repay = {friend["name"]: 0.0 for friend in friends}
+    details_to_repay = {friend["name"]: [] for friend in friends}
+
+    for balance in net_balances:
+        debtor = balance["Chi deve ricambiare"]
+        creditor = balance["A chi"]
+        km_due = float(balance["Km da ricambiare"])
+        totals_to_repay[debtor] += km_due
+        details_to_repay[debtor].append((creditor, km_due))
+
+    ordered_people = sorted(
+        totals_to_repay.keys(),
+        key=lambda person: totals_to_repay[person],
+        reverse=True
+    )
+
+    recommendation_rows = []
+    for index, person in enumerate(ordered_people, start=1):
+        details = sorted(
+            details_to_repay[person],
+            key=lambda item: item[1],
             reverse=True
         )
-
-        recommendation_rows = []
-
-        for index, balance in enumerate(sorted_balances, start=1):
-            recommendation_rows.append({
-                "Priorità": index,
-                "Chi dovrebbe guidare": balance["Chi deve ricambiare"],
-                "Chi dovrebbe portare": balance["A chi"],
-                "Km personali da compensare": balance["Km da ricambiare"]
-            })
-
-        st.dataframe(
-            pd.DataFrame(recommendation_rows),
-            use_container_width=True,
-            hide_index=True
+        detail_text = ", ".join(
+            f"{format_km(km)} km a {creditor}"
+            for creditor, km in details
         )
+        recommendation_rows.append({
+            "Posizione": index,
+            "Persona": person,
+            "Km totali da ricambiare": round(totals_to_repay[person], 1),
+            "Dettaglio: a chi deve restituirli": (
+                detail_text if detail_text else "Nessun km da ricambiare"
+            )
+        })
 
+    st.dataframe(
+        pd.DataFrame(recommendation_rows),
+        use_container_width=True,
+        hide_index=True
+    )
+
+    st.caption(
+        "La classifica somma tutti i chilometri che ciascuna persona deve "
+        "restituire al gruppo. Il dettaglio indica a chi spettano. "
+        "Le persone a pari merito sono ordinate in base al totale; "
+        "chi è in pareggio compare in fondo."
+    )
+
+    if any(total > 0.01 for total in totals_to_repay.values()):
         st.info(
-            "Quando organizzate il prossimo viaggio, potete provare "
-            "a far guidare la persona indicata e a portare il passeggero "
-            "associato. Registrate i chilometri effettivamente percorsi."
+            "Per i prossimi viaggi, date priorità a chi ha il totale più alto: "
+            "può prendere la macchina e distribuire i passaggi tra le persone "
+            "a cui deve chilometri. Registrate sempre i chilometri effettivi."
         )
-
     else:
-        st.success(
-            "Non ci sono debiti da compensare."
-        )
+        st.success("Non ci sono debiti da compensare.")
 
 
     # =========================================================
