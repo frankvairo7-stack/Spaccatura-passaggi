@@ -17,6 +17,23 @@ st.set_page_config(
     layout="wide"
 )
 
+# Miglioramenti di leggibilità su smartphone
+st.markdown(
+    """
+    <style>
+    @media (max-width: 768px) {
+      .block-container { padding-left: 0.8rem; padding-right: 0.8rem; }
+      [data-testid="stHorizontalBlock"] { flex-wrap: wrap; gap: 0.6rem; }
+      [data-testid="column"] { min-width: 100% !important; flex: 1 1 100% !important; }
+      [data-testid="stDataFrame"] { overflow-x: auto; }
+      .stButton > button, .stDownloadButton > button { min-height: 2.8rem; width: 100%; }
+      input, textarea { font-size: 16px !important; }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 st.title("🚗 Spaccatura: passaggi")
 
 st.caption(
@@ -215,11 +232,8 @@ def load_change_log():
 try:
     friends = load_friends()
 
-    if len(friends) != 7:
-        st.error(
-            "Nel database devono esserci esattamente "
-            f"7 profili attivi. Attualmente sono: {len(friends)}."
-        )
+    if not friends:
+        st.error("Non ci sono profili attivi nel database Supabase.")
         st.stop()
 
     name_by_id = {
@@ -587,141 +601,96 @@ with st.expander("✏️ Modifica o elimina un viaggio", expanded=False):
 
         with edit_tab:
             st.write("Aggiorna i campi e salva le modifiche.")
+            st.caption(
+                "Puoi aggiungere o togliere passeggeri anche dopo aver "
+                "registrato il viaggio. Le modifiche vengono salvate solo "
+                "quando premi il pulsante in fondo."
+            )
 
-            with st.form(
-                key=f"edit_form_{selected_trip_id}"
-            ):
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    edit_date = st.date_input(
-                        "Data",
-                        value=date.fromisoformat(
-                            str(selected_trip["travel_date"])[:10]
-                        ),
-                        key=f"edit_date_{selected_trip_id}"
-                    )
-
-                    current_driver_name = name_by_id[
-                        selected_trip["driver_id"]
-                    ]
-
-                    edit_driver = st.selectbox(
-                        "Conducente",
-                        list(id_by_name.keys()),
-                        index=list(id_by_name.keys()).index(
-                            current_driver_name
-                        ),
-                        key=f"edit_driver_{selected_trip_id}"
-                    )
-
-                    edit_origin = st.text_input(
-                        "Partenza",
-                        value=selected_trip["origin"],
-                        key=f"edit_origin_{selected_trip_id}"
-                    )
-
-                    edit_destination = st.text_input(
-                        "Destinazione",
-                        value=selected_trip["destination"],
-                        key=f"edit_destination_{selected_trip_id}"
-                    )
-
-                with col2:
-                    edit_total_km = st.number_input(
-                        "Km complessivi dell'auto",
-                        min_value=0.1,
-                        max_value=3000.0,
-                        value=float(selected_trip["km"]),
-                        step=0.5,
-                        key=f"edit_total_km_{selected_trip_id}"
-                    )
-
-                    edit_notes = st.text_input(
-                        "Note",
-                        value=selected_trip.get("notes") or "",
-                        key=f"edit_notes_{selected_trip_id}"
-                    )
-
-                st.markdown("**Passeggeri e chilometri personali**")
-                st.caption(
-                    "Seleziona i passeggeri e modifica i chilometri individuali "
-                    "se non hanno percorso l’intero tragitto."
+            col1, col2 = st.columns(2)
+            with col1:
+                edit_date = st.date_input(
+                    "Data",
+                    value=date.fromisoformat(str(selected_trip["travel_date"])[:10]),
+                    key=f"edit_date_{selected_trip_id}"
+                )
+                current_driver_name = name_by_id[selected_trip["driver_id"]]
+                edit_driver = st.selectbox(
+                    "Conducente",
+                    list(id_by_name.keys()),
+                    index=list(id_by_name.keys()).index(current_driver_name),
+                    key=f"edit_driver_{selected_trip_id}"
+                )
+                edit_origin = st.text_input(
+                    "Partenza", value=selected_trip["origin"],
+                    key=f"edit_origin_{selected_trip_id}"
+                )
+                edit_destination = st.text_input(
+                    "Destinazione", value=selected_trip["destination"],
+                    key=f"edit_destination_{selected_trip_id}"
+                )
+            with col2:
+                edit_total_km = st.number_input(
+                    "Km complessivi dell'auto", min_value=0.1,
+                    max_value=3000.0, value=float(selected_trip["km"]),
+                    step=0.5, key=f"edit_total_km_{selected_trip_id}"
+                )
+                edit_notes = st.text_input(
+                    "Note", value=selected_trip.get("notes") or "",
+                    key=f"edit_notes_{selected_trip_id}"
                 )
 
-                edit_passengers = {}
-                current_passenger_map = {
-                    name_by_id[p["friend_id"]]: float(p["km"])
-                    for p in selected_trip.get("passengers", [])
-                    if p["friend_id"] in name_by_id
-                }
+            current_passenger_map = {
+                name_by_id[p["friend_id"]]: float(p["km"])
+                for p in selected_trip.get("passengers", [])
+                if p["friend_id"] in name_by_id
+            }
+            edit_other_names = [name for name in id_by_name if name != edit_driver]
+            st.markdown("**Passeggeri e chilometri personali**")
+            edit_passengers = {}
+            edit_cols = st.columns(2)
 
-                edit_other_names = [
-                    name for name in id_by_name
-                    if name != edit_driver
-                ]
-
-                edit_cols = st.columns(2)
-
-                for i, passenger_name in enumerate(edit_other_names):
-                    with edit_cols[i % 2]:
-                        friend_id = id_by_name[passenger_name]
-                        was_selected = passenger_name in current_passenger_map
-
-                        is_selected = st.checkbox(
-                            passenger_name,
-                            value=was_selected,
-                            key=f"edit_passenger_{selected_trip_id}_{friend_id}"
+            for i, passenger_name in enumerate(edit_other_names):
+                friend_id = id_by_name[passenger_name]
+                checkbox_key = f"edit_passenger_{selected_trip_id}_{friend_id}"
+                km_key = f"edit_km_{selected_trip_id}_{friend_id}"
+                was_selected = passenger_name in current_passenger_map
+                with edit_cols[i % 2]:
+                    is_selected = st.checkbox(
+                        passenger_name,
+                        value=was_selected,
+                        key=checkbox_key
+                    )
+                    if is_selected:
+                        default_km = min(
+                            float(edit_total_km),
+                            max(0.1, current_passenger_map.get(
+                                passenger_name, float(edit_total_km)
+                            ))
                         )
+                        passenger_km = st.number_input(
+                            f"Km personali di {passenger_name}",
+                            min_value=0.0,
+                            max_value=3000.0,
+                            value=default_km,
+                            step=0.5,
+                            key=km_key
+                        )
+                        edit_passengers[passenger_name] = float(passenger_km)
 
-                        if is_selected:
-                            default_km = current_passenger_map.get(
-                                passenger_name,
-                                float(edit_total_km)
-                            )
-
-                            default_km = min(
-                                float(edit_total_km),
-                                max(0.1, default_km)
-                            )
-
-                            edit_passengers[passenger_name] = st.number_input(
-                                f"Km personali di {passenger_name}",
-                                min_value=0.0,
-                                max_value=float(edit_total_km),
-                                value=default_km,
-                                step=0.5,
-                                key=f"edit_km_{selected_trip_id}_{friend_id}"
-                            )
-
-                save_edit = st.form_submit_button(
-                    "💾 Salva modifiche",
-                    type="primary",
-                    use_container_width=True
-                )
-
-            if save_edit:
+            if st.button(
+                "💾 Salva modifiche", type="primary",
+                use_container_width=True,
+                key=f"save_edit_{selected_trip_id}"
+            ):
                 if not edit_origin.strip() or not edit_destination.strip():
                     st.error("Partenza e destinazione sono obbligatorie.")
-
                 elif not edit_passengers:
                     st.error("Seleziona almeno un passeggero.")
-
                 elif any(km <= 0 for km in edit_passengers.values()):
-                    st.error(
-                        "I chilometri personali dei passeggeri "
-                        "devono essere maggiori di zero."
-                    )
-
-                elif any(
-                    km > float(edit_total_km)
-                    for km in edit_passengers.values()
-                ):
-                    st.error(
-                        "I chilometri personali non possono superare "
-                        "i chilometri totali dell'auto."
-                    )
-
+                    st.error("I chilometri personali dei passeggeri devono essere maggiori di zero.")
+                elif any(km > float(edit_total_km) for km in edit_passengers.values()):
+                    st.error("I chilometri personali non possono superare i chilometri totali dell'auto.")
                 else:
                     try:
                         updated_payload = {
@@ -732,17 +701,10 @@ with st.expander("✏️ Modifica o elimina un viaggio", expanded=False):
                             "km": float(edit_total_km),
                             "notes": edit_notes.strip()
                         }
-
-                        supabase.table("trips").update(
-                            updated_payload
-                        ).eq("id", selected_trip_id).execute()
-
-                        save_passengers(
-                            selected_trip_id,
-                            edit_passengers,
-                            id_by_name
-                        )
-
+                        supabase.table("trips").update(updated_payload).eq(
+                            "id", selected_trip_id
+                        ).execute()
+                        save_passengers(selected_trip_id, edit_passengers, id_by_name)
                         new_snapshot = {
                             "data": edit_date.isoformat(),
                             "conducente": edit_driver,
@@ -751,38 +713,25 @@ with st.expander("✏️ Modifica o elimina un viaggio", expanded=False):
                             "km_auto": float(edit_total_km),
                             "note": edit_notes.strip(),
                             "passeggeri": [
-                                {
-                                    "nome": name,
-                                    "km_personali": float(km)
-                                }
+                                {"nome": name, "km_personali": float(km)}
                                 for name, km in edit_passengers.items()
                             ]
                         }
-
                         log_change(
-                            actor_name=actor_name,
-                            action="Modifica",
+                            actor_name=actor_name, action="Modifica",
                             trip_id=selected_trip_id,
                             description=(
-                                f"Modificato viaggio: "
-                                f"{edit_origin.strip()} → "
+                                f"Modificato viaggio: {edit_origin.strip()} → "
                                 f"{edit_destination.strip()}"
                             ),
-                            old_data=original_snapshot,
-                            new_data=new_snapshot
+                            old_data=original_snapshot, new_data=new_snapshot
                         )
-
-                        st.success(
-                            "Viaggio aggiornato! I debiti verranno "
-                            "ricalcolati al ricaricamento."
-                        )
+                        st.success("Viaggio aggiornato! I debiti verranno ricalcolati.")
                         refresh_app()
-
                     except Exception as exc:
                         st.error(
-                            "Errore durante la modifica. "
-                            "Controlla il viaggio su Supabase prima "
-                            f"di riprovare. Dettaglio: {exc}"
+                            "Errore durante la modifica. Controlla il viaggio su "
+                            f"Supabase prima di riprovare. Dettaglio: {exc}"
                         )
 
         with delete_tab:
@@ -1020,10 +969,14 @@ for trip in filtered_trips:
         stats_by_person[driver_name]["Viaggi alla guida"] += 1
         stats_by_person[driver_name]["Km alla guida"] += float(trip["km"])
 
-    for passenger in trip.get("passengers", []):
+    passengers = trip.get("passengers", [])
+    # Un passaggio dato è una persona trasportata dal conducente.
+    if driver_name in stats_by_person:
+        stats_by_person[driver_name]["Passaggi dati"] += len(passengers)
+
+    for passenger in passengers:
         passenger_name = name_by_id.get(passenger["friend_id"])
         if passenger_name in stats_by_person:
-            stats_by_person[passenger_name]["Passaggi dati"] += 1
             stats_by_person[passenger_name]["Viaggi da passeggero"] += 1
             stats_by_person[passenger_name]["Km da passeggero"] += float(
                 passenger["km"]
@@ -1093,8 +1046,9 @@ else:
         )
 
     st.caption(
-        "Nota: 'Passaggi dati' conta le presenze dei passeggeri nei viaggi "
-        "registrati; non rappresenta un rimborso economico."
+        "Nota: 'Passaggi dati' conta quante persone sono state trasportate "
+        "quando la persona era alla guida; 'Viaggi da passeggero' conta i "
+        "viaggi effettuati da passeggero."
     )
 
 
